@@ -1,0 +1,8 @@
+s3main.c
+s3.h
+s3.c
+s3
+myfile.txt
+myfile3.txt
+myfile2.txt
+.:
