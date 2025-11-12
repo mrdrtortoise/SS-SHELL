@@ -11,6 +11,8 @@ int main(int argc, char *argv[])
     idx[0] = 0;
     int idx_count;
     bool sel = false;
+    //calling from main, not from the launch_pipeline function
+    bool from_pipeline = false;
 
     /// The last (previous) working directory
     char lwd[MAX_PROMPT_LEN - 6];
@@ -49,26 +51,32 @@ int main(int argc, char *argv[])
             if (!status)
             {
                 run_pipeline(args, &argc, idx, &idx_count);
+                reap_all();
+            }
+        }
+        else if (command_with_redirection(line, NULL, 0))
+        { /// Command with redirection
+            status = parse_command_with_redirection(line, args, &argsc, &outfile, &infile, &append, 1);
+            if (!status)
+            {
+                //pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
+                //and not inside launch_pipeline
+                launch_program_with_redirection(args, argsc, &outfile, &infile, &append, &from_pipeline, NULL);
+                reap();
             }
         }
         else if (is_cd(line))
         { /// Command cd
             parse_command(line, args, &argsc, NULL, NULL, NULL);
             run_cd(args, argsc, lwd);
-        }
-        else if (command_with_redirection(line, NULL, 0))
-        { /// Command with redirection
-            status = parse_command_with_redirection(line, args, &argsc, &outfile, &infile, &append);
-            if (!status)
-            {
-                launch_program_with_redirection(args, argsc, &outfile, &infile, &append);
-                reap();
-            }
+            reap();
         }
         else /// Basic command
         {
             parse_command(line, args, &argsc, NULL, NULL, NULL);
-            launch_program(args, argsc);
+            //pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
+            //and not inside launch_pipeline
+            launch_program(args, argsc, &from_pipeline, NULL);
             reap();
         }
     }

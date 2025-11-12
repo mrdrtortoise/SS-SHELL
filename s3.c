@@ -50,6 +50,14 @@ void Pipe(int pipefd[2])
     }
 }
 
+int Dup2(int oldfile, int newfile){
+    int rc = dup2(oldfile, newfile);
+    if(rc == -1){
+        perror("dup2 failed");
+        exit(EXIT_FAILURE);
+    }
+    return rc;
+}
 /// Init lwd
 void init_lwd(char lwd[])
 {
@@ -134,6 +142,7 @@ int command_with_redirection(char *line, char *args[], int sel)
                 return found;
             }
         }
+        found = 0;
         return found;
     }
     else
@@ -200,7 +209,6 @@ int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_coun
                     return 1;
                 }
                 args[i] = NULL;
-                printf("current value of idx_count: %d\n", *idx_count);
                 idx[(*idx_count)++] = i + 1;
             }
         }
@@ -226,17 +234,25 @@ int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_coun
 }
 
 /// returns 0 if there was no error. 1 if there has been an error
-int parse_command_with_redirection(char line[], char *args[], int *argsc, char **outfile, char **infile, int *append)
+// set sel to 1 to parse the line[]. set sel to 0 to skip that and directly figure out the input/output files
+//for pipeline application where slice is already tokenized
+int parse_command_with_redirection(char *line, char *args[], int *argsc, char **outfile, char **infile, int *append, int sel)
 {
-    char *token = strtok(line, " ");
-    *argsc = 0;
-    while (token != NULL && *argsc < MAX_ARGS - 1)
-    {
-        args[(*argsc)++] = token;
-        token = strtok(NULL, " ");
+    if(sel){
+        if(line == NULL){
+            fprintf(stderr, "line cannot be NULL if sel is 1\n");
+            return 1;
+        }
+        char *token = strtok(line, " ");
+        *argsc = 0;
+        while (token != NULL && *argsc < MAX_ARGS - 1)
+        {
+            args[(*argsc)++] = token;
+            token = strtok(NULL, " ");
+        }
+    
+        args[*argsc] = NULL;
     }
-
-    args[*argsc] = NULL;
     *append = 0;
     for (int i = 0; i < *argsc; i++)
     {
@@ -290,7 +306,7 @@ void child(char *args[], int argsc)
     Execvp(args[0], args);
 }
 
-void launch_program(char *args[], int argsc)
+void launch_program(char *args[], int argsc, bool *from_pipeline, pid_t *pid_pipeline)
 {
     /// Implement this function:
 
@@ -307,25 +323,34 @@ void launch_program(char *args[], int argsc)
     {
         exit(EXIT_SUCCESS);
     }
-    pid_t pid = Fork();
+
+    pid_t pid;
+    if(!(*from_pipeline)){
+        pid = Fork();
+    }else{
+        pid = (*pid_pipeline);
+    }
+
     if (pid == 0)
     {
         child(args, argsc);
     }
-    else
-    {
-        wait(&status);
-    }
 }
 
-void launch_program_with_redirection(char *args[], int argsc, char **outfile, char **infile, int *append)
+void launch_program_with_redirection(char *args[], int argsc, char **outfile, char **infile, int *append, bool *from_pipeline, pid_t *pid_pipeline)
 {
     // TODO
     // Make the Fork Call
     // call child_with_redirection
     // should get as input the outfile and infile so
     // it can adjust the STDIN and STDOUT accordingly
-    pid_t pid = Fork();
+    int status;
+    pid_t pid;
+    if(!(*from_pipeline)){
+        pid = Fork();
+    }else{
+        pid = *pid_pipeline;
+    }
     if (pid == 0)
     {
         if (*infile != NULL && *outfile != NULL)
@@ -354,7 +379,7 @@ void child_with_output_redirection(char *args[], int argsc, char *outfile, int a
         perror("Error when opening output\n");
         exit(EXIT_FAILURE);
     }
-    dup2(fd, STDOUT_FILENO);
+    Dup2(fd, STDOUT_FILENO);
     close(fd);
     Execvp(args[0], args);
 }
@@ -369,7 +394,7 @@ void child_with_input_redirection(char *args[], int argsc, char *infile)
         perror("Error when opening input\n");
         exit(EXIT_FAILURE);
     }
-    dup2(fd, STDIN_FILENO);
+    Dup2(fd, STDIN_FILENO);
     close(fd);
     Execvp(args[0], args);
 }
@@ -386,8 +411,8 @@ void child_with_IaO_redirection(char *args[], int argsc, char *outfile, char *in
         perror("Error when opening output/input\n");
         exit(EXIT_FAILURE);
     }
-    dup2(fd_out, STDOUT_FILENO);
-    dup2(fd_in, STDIN_FILENO);
+    Dup2(fd_out, STDOUT_FILENO);
+    Dup2(fd_in, STDIN_FILENO);
     close(fd_out);
     close(fd_in);
     Execvp(args[0], args);
@@ -426,32 +451,53 @@ void run_cd(char *args[], int argsc, char lwd[])
     strcpy(lwd, prev_cwd);
 }
 
-void create_pipes(int pipes[], char *args[], int *argsc, int *idx, int *idx_count)
+void create_pipes(int pipes[][2], char *args[], int *argsc, int *idx, int *idx_count)
 {
     for (int i = 0; i < ((*idx_count) - 1); i++)
     {
-        Pipe(pipes + 2 * i);
+        Pipe(pipes[i]);
     }
-    pipes[2 * ((*idx_count) - 1)] = -1;
 }
 
-// fdin (aka the output of previous pipe) fdout (aka the input of next pipes)
-void launch_pipelined_program(int *fdin, int *fdout, char *args[], int argsc)
+// Decides on either redirection or no redirection launch calls for each pipeline stage
+void launch_pipelined_program(int pipes[][2], int i, int idx_count, char *args[], int argsc)
 {
-    char *outfile, *infile;
-    int append;
+    char *outfile = NULL;
+    char *infile = NULL;
+    int append = 0;
+    int slice_argsc = argsc;
+    int n = idx_count-1;
+    bool from_pipeline = true;
     // actually need to make the fork call here in order to change the FD to fdin and fdout
     // that would mean that I have to change the launch_program_with_direction
     // to include handle children that have already been forked.
     // here, the only purpose of launch_program_with_redirection is overwriting
     // the file descriptors so that the output/input goes to wherever it is redirected
     // and not the next /previous pipeline stage
-    if (command_with_redirection(NULL, args, 1))
-    {
-        launch_program_with_redirection(args, argsc, &outfile, &infile, &append);
-    }
-    else
-    {
+    pid_t pid = Fork();
+    if(pid == 0){
+        if(i == 0){
+            Dup2(pipes[0][1], STDOUT_FILENO);
+        }else if(i == n){
+            Dup2(pipes[n-1][0], STDIN_FILENO);
+        }else{
+            Dup2(pipes[i-1][0], STDIN_FILENO);
+            Dup2(pipes[i][1], STDOUT_FILENO);
+        }
+        for(int k = 0; k < n; k++){
+            close(pipes[k][0]);
+            close(pipes[k][1]);
+        }
+
+        if (command_with_redirection(NULL, args, 1))
+        {
+            parse_command_with_redirection(NULL, args, &slice_argsc, &outfile, &infile, &append, 0);
+            launch_program_with_redirection(args, argsc, &outfile, &infile, &append, &from_pipeline, &pid);
+        }
+        else
+        {
+            launch_program(args, argsc, &from_pipeline, &pid);
+        }
     }
 }
 
@@ -459,13 +505,13 @@ void run_pipeline(char *args[], int *argsc, int *idx, int *idx_count)
 {
     char *slice[MAX_ARGS];
     // pipes is initialized to half*2 the max number of args (if you have 128 args and every second is a pipe then you would have max 64 pipes * 2 = 128)
-    int pipes[MAX_ARGS];
+    int pipes[(*idx_count)-1][2];
     int slice_count;
     create_pipes(pipes, args, argsc, idx, idx_count);
-    for (int i = 0; pipes[i] != -1; i++)
+    /*for (int i = 0; pipes[i] != -1; i++)
     {
         printf("[idx %d] of pipes is : %d\n", i, pipes[i]);
-    }
+    }*/
     for (int i = 0; i < (*idx_count); i++)
     {
         slice_count = 0;
@@ -481,20 +527,11 @@ void run_pipeline(char *args[], int *argsc, int *idx, int *idx_count)
         // maybe we could directly fork idx_count children (thats how many programs will be running in the pipeline)
         // then do the pipeline input output connections before execvp.
         // how would I then overwrite pipeline output and input redirection?
-        if (i == 0)
-        {
-            printf("[launching program] stdout: %d\n", pipes[0]);
-            launch_pipelined_program(NULL, &pipes[0], slice, slice_count);
-        }
-        else if (i == (*idx_count) - 1)
-        {
-            printf("[launching program] stdin: %d\n", pipes[(2 * i) - 1]);
-            launch_pipelined_program(&pipes[(2 * i) - 1], NULL, slice, slice_count);
-        }
-        else
-        {
-            printf("[launching program] stdin: %d, stdout: %d\n", pipes[(2 * i) - 1], pipes[(2 * i)]);
-            launch_pipelined_program(&pipes[(2 * i) - 1], &pipes[(2 * i)], slice, slice_count);
-        }
+        slice[slice_count] = NULL;
+        launch_pipelined_program(pipes, i, (*idx_count), slice, slice_count);
+    }
+    for(int i = 0; i < (*idx_count)-1; i++){
+        close(pipes[i][0]);
+        close(pipes[i][1]);
     }
 }
