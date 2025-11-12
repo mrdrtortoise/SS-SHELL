@@ -37,7 +37,8 @@ static inline void reap()
 }
 static inline void reap_all()
 {
-    while (wait(NULL) > 0);
+    while (wait(NULL) > 0)
+        ;
 }
 
 /// Text Art
@@ -49,15 +50,14 @@ void construct_shell_prompt(char shell_prompt[]);
 
 int command_with_redirection(char *line, char *args[], int sel);
 int parse_command_with_redirection(char line[], char *args[], int *argsc, char **outfile, char **infile, int *append, int sel);
-
 int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_count, bool *sel);
 
 /// functions for pipe stages
 int command_with_pipes(char *line);
 void run_pipeline(char *args[], int *argsc, int *idx, int *idx_count);
 void create_pipes(int pipes[][2], char *args[], int *argsc, int *idx, int *idx_count);
-//i is the index of the command in the overall comman typed by the user
-//pipes has all the file descriptors for the pipelines so that each child can close all the ones it doesnt need
+// i is the index of the command in the overall comman typed by the user
+// pipes has all the file descriptors for the pipelines so that each child can close all the ones it doesnt need
 void launch_pipelined_program(int pipes[][2], int i, int idx_count, char *args[], int argsc);
 
 /// Child functions (add more as appropriate)
