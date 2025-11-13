@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     /// The last (previous) working directory
     char lwd[MAX_PROMPT_LEN - 6];
 
-    init_s3();
+    // init_s3();
     init_lwd(lwd); /// Implement this function: initializes lwd with the cwd (using getcwd)
 
     // Stores pointers to command arguments.
@@ -87,11 +87,13 @@ int main(int argc, char *argv[])
                 }
                 else /// Basic command
                 {
-                    parse_command(command, args, &argsc, NULL, NULL, NULL);
-                    // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
-                    // and not inside launch_pipeline
-                    launch_program(args, argsc, &from_pipeline, NULL);
-                    reap();
+                    if (parse_command(command, args, &argsc, NULL, NULL, NULL) == 0)
+                    {
+                        // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
+                        // and not inside launch_pipeline
+                        launch_program(args, argsc, &from_pipeline, NULL);
+                        reap();
+                    }
                 }
             }
         }
@@ -127,11 +129,13 @@ int main(int argc, char *argv[])
             }
             else /// Basic command
             {
-                parse_command(line, args, &argsc, NULL, NULL, NULL);
-                // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
-                // and not inside launch_pipeline
-                launch_program(args, argsc, &from_pipeline, NULL);
-                reap();
+                if (parse_command(line, args, &argsc, NULL, NULL, NULL) == 0)
+                {
+                    // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
+                    // and not inside launch_pipeline
+                    launch_program(args, argsc, &from_pipeline, NULL);
+                    reap();
+                }
             }
         }
     }

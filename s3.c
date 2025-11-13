@@ -109,7 +109,15 @@ void read_command_line(char line[], char lwd[])
 
 void get_next_command(char *line, char *command, int *curr_idx)
 {
-    int i = (*curr_idx);
+    int i;
+    if (*curr_idx == 0)
+    {
+        i = (*curr_idx);
+    }
+    else
+    {
+        i = (*curr_idx) + 1;
+    }
     int j = 0;
 
     while (line[i] != ';' && line[i] != '\0' && j < MAX_LINE - 1)
@@ -226,6 +234,10 @@ int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_coun
     /// There is no dynamic allocation.
 
     /// See the man page of strtok(...)
+    if (strlen(line) == 0)
+    {
+        return 1;
+    }
     char *token = strtok(line, " ");
     *argsc = 0;
     while (token != NULL && *argsc < MAX_ARGS - 1)
