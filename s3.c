@@ -107,6 +107,23 @@ void read_command_line(char line[], char lwd[])
     line[strlen(line) - 1] = '\0';
 }
 
+void get_next_command(char *line, char *command, int *curr_idx)
+{
+    int i = (*curr_idx);
+    int j = 0;
+
+    while (line[i] != ';' && line[i] != '\0' && j < MAX_LINE - 1)
+    {
+        command[j++] = line[i++];
+    }
+    command[j] = '\0';
+
+    if (line[i] = ';')
+    {
+        i++;
+    }
+    *curr_idx = i;
+}
 /// Check Whether or not the Command has Input/Output Redirection.
 /// Returns 1 if there is Redirection and 0 if none.
 int command_with_redirection(char *line, char *args[], int sel)
@@ -184,6 +201,21 @@ int command_with_pipes(char *line)
         i++;
     }
     return 0;
+}
+
+int batched_command(char *line)
+{
+    int i = 0;
+    int count = 0;
+    while (line[i] != '\0')
+    {
+        if (line[i] == ';')
+        {
+            count++;
+        }
+        i++;
+    }
+    return count;
 }
 
 int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_count, bool *sel)
