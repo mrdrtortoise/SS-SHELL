@@ -1,6 +1,6 @@
 #include "s3.h"
 
-int main(int argc, char *argv[])
+int main(int argc, char *argv[], char *env)
 {
 
     /// Is updated throughout the program with the new line while iterating through batched commands
@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     /// The last (previous) working directory
     char lwd[MAX_PROMPT_LEN - 6];
 
-    // init_s3();
+    init_s3();
     init_lwd(lwd); /// Implement this function: initializes lwd with the cwd (using getcwd)
 
     // Stores pointers to command arguments.

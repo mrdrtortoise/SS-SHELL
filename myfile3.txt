@@ -1,10 +1,4 @@
-README.md
-calendar.txt
-myfile.txt
-myfile2.txt
-myfile3.txt
-s3
-s3.c
-s3.h
-s3main.c
-txt
+hello world
+
+hello world
+

@@ -80,9 +80,9 @@ void construct_shell_prompt(char shell_prompt[])
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL)
     {
-        strcpy(shell_prompt, "[");
+        strcpy(shell_prompt, "{");
         strcat(shell_prompt, cwd);
-        strcat(shell_prompt, " s3]$> ");
+        strcat(shell_prompt, " s3}$> ");
     }
     else
     {
@@ -472,7 +472,7 @@ void run_cd(char *args[], int argsc, char lwd[])
 
     if (args[1] == NULL)
     {
-        if (chdir("/") != 0)
+        if (chdir(getenv("HOME")) != 0)
         {
             perror("Could not change directory to root\n");
         }
