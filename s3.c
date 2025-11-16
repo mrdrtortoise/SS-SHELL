@@ -80,9 +80,9 @@ void construct_shell_prompt(char shell_prompt[])
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL)
     {
-        strcpy(shell_prompt, "{");
+        strcpy(shell_prompt, "\033[1;34m{\033[1;32m");
         strcat(shell_prompt, cwd);
-        strcat(shell_prompt, " s3}$> ");
+        strcat(shell_prompt, "\033[1;34m s3}$> \033[0m");
     }
     else
     {
@@ -109,6 +109,7 @@ void read_command_line(char line[], char lwd[])
 
 void get_next_command(char *line, char *command, int *curr_idx)
 {
+    int nest_level = 0;
     int i;
     if (*curr_idx == 0)
     {
@@ -120,13 +121,23 @@ void get_next_command(char *line, char *command, int *curr_idx)
     }
     int j = 0;
 
-    while (line[i] != ';' && line[i] != '\0' && j < MAX_LINE - 1)
+    while (((line[i] != ';') || nest_level != 0) && (line[i] != '\0' && j < MAX_LINE - 1))
     {
+        if(line[i] == '('){
+            nest_level++;
+        }
+        else if(line[i] == ')'){
+            nest_level--;
+        }
         command[j++] = line[i++];
     }
-    command[j] = '\0';
+    if(command[j-1] == ' '){
+        command[j-1] = '\0';
+    }else{
+        command[j] = '\0';
+    }
 
-    if (line[i] = ';')
+    if (line[i] == ';')
     {
         i++;
     }
@@ -136,20 +147,31 @@ void get_next_command(char *line, char *command, int *curr_idx)
 /// Returns 1 if there is Redirection and 0 if none.
 int command_with_redirection(char *line, char *args[], int sel)
 {
+    int nest_level = 0;
     int found = 0;
     if (sel == 0)
     {
         for (int i = 0; line[i] != '\0'; i++)
         {
-            if (line[i] == '<')
-            {
-                found = 1;
-                return found;
+            if(line[i] == '('){
+                nest_level++;
             }
-            else if (line[i] == '>')
-            {
-                found = 1;
-                return found;
+            else if(line[i] == ')'){
+                nest_level--;
+            }
+
+
+            if(nest_level == 0){
+                if (line[i] == '<')
+                {
+                    found = 1;
+                    return found;
+                }
+                else if (line[i] == '>')
+                {
+                    found = 1;
+                    return found;
+                }
             }
         }
         return found;
@@ -197,33 +219,109 @@ int is_cd(char line[])
 
 /// Check Whether or not the Command has Pipes
 /// Returns 1 if yes, 0 otherwise
-int command_with_pipes(char *line)
+int command_with_pipes(char *line, int subshell)
 {
     int i = 0;
-    while (line[i] != '\0')
-    {
-        if (line[i] == '|')
+    int nest_level = 0;
+    if(subshell != -1){
+        while (line[i] != '\0')
         {
-            return 1;
+            if(line[i] == '('){
+                nest_level++;
+            } 
+            else if(line[i] == ')'){
+                nest_level--;
+            }
+            if ((line[i] == '|' && !subshell) || (line[i] == '|' && nest_level == 0))
+            {
+                return 1;
+            }
+            i++;
         }
-        i++;
     }
     return 0;
+}
+
+int subshell(char *line, char *args[], int sel){
+    bool foundrb = false, foundlb = false;
+    if(sel == 0){
+        for(int i = 0; line[i] != '\0'; i++){
+            if(line[i] == '('){
+                foundlb = true;
+            }else if(line[i] == ')'){
+                foundrb = true;
+            }
+        }
+    }
+    else if(sel == 1){
+        for(int i = 0; args[i] != NULL; i++){
+            if(strcmp(args[i], "(") == 0){
+                foundlb = true;
+            }
+            else if(strcmp(args[i], ")") == 0){
+                foundrb = true;
+            }
+        }
+    }
+    else{
+        fprintf(stderr, "expecing 3rd argument in subshell() to be 0,1 (got %d)\n", sel);
+        return -1;
+    }
+
+
+    if(foundlb && foundrb){
+        return 1;
+    }else if(foundlb && !foundrb){
+        fprintf(stderr, "missing closing bracket for subshell\n");
+        return -1;
+    }else if(!foundlb && foundrb){
+        fprintf(stderr, "missing opening bracket for subshell\n");
+        return -1;
+    }else{
+        return 0;
+    }
 }
 
 int batched_command(char *line)
 {
     int i = 0;
     int count = 0;
+    int nest_level = 0;
     while (line[i] != '\0')
     {
-        if (line[i] == ';')
+        if(line[i] == '('){
+            nest_level++;
+        }
+        else if(line[i] == ')'){
+            nest_level--;
+        }
+        if (line[i] == ';' && nest_level == 0)
         {
             count++;
         }
         i++;
     }
     return count;
+}
+
+void clean_subshell_command(char *line, char *args[], int sel){
+    int j = 0;
+    if(sel == 0){
+        for(int i = 1; line[i] != '\0'; i++){
+            line[j++] = line[i];
+        }
+        line[j-1] = '\0';
+    }
+    else if(sel == 1){
+        for(int i = 0; args[i] != NULL; i++){
+            if(strcmp(args[i], "(") != 0 && strcmp(args[i], ")") != 0){
+                args[j++] = args[i];
+            }
+        }
+        args[j] = NULL;
+    }else{
+        fprintf(stderr, "clean_subshell_command got thrid argument: %d (expected 0,1)\n", sel);
+    }
 }
 
 int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_count, bool *sel)
@@ -234,6 +332,7 @@ int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_coun
     /// There is no dynamic allocation.
 
     /// See the man page of strtok(...)
+    int nest_level = 0;
     if (strlen(line) == 0)
     {
         return 1;
@@ -252,7 +351,16 @@ int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_coun
     {
         for (int i = 0; args[i] != NULL; i++)
         {
-            if (strcmp(args[i], "|") == 0)
+            //nesting logic
+            if(strcmp(args[i], "(") == 0){
+                nest_level++;
+            }
+            else if(strcmp(args[i], ")") == 0){
+                nest_level--;
+            }
+
+            //only taking '|' as a seperator if nesting level is 0 (we are not inside a subshell)
+            if ((strcmp(args[i], "|") == 0) && (nest_level == 0))
             {
                 if (args[i + 1] == NULL)
                 {
@@ -273,6 +381,7 @@ int parse_command(char line[], char *args[], int *argsc, int *idx, int *idx_coun
 // for pipeline application where slice is already tokenized
 int parse_command_with_redirection(char *line, char *args[], int *argsc, char **outfile, char **infile, int *append, int sel)
 {
+    int nest_level = 0;
     if (sel)
     {
         if (line == NULL)
@@ -293,41 +402,51 @@ int parse_command_with_redirection(char *line, char *args[], int *argsc, char **
     *append = 0;
     for (int i = 0; i < *argsc; i++)
     {
-        if (strcmp(args[i], "<") == 0)
-        {
-            if (args[i + 1] == NULL)
-            {
-                fprintf(stderr, "Syntax Error: No Input File Provided\n");
-                return 1;
-            }
-            *infile = args[i + 1];
-            args[i] = NULL;
-            i++;
+        if(strcmp(args[i], "(") == 0){
+            nest_level++;
         }
-        else if (strcmp(args[i], ">>") == 0)
-        {
-            if (args[i + 1] == NULL)
-            {
-                fprintf(stderr, "Syntax Error: No Output File For Appending Provided\n");
-                return 1;
-            }
-            *outfile = args[i + 1];
-            args[i] = NULL;
-            *append = 1;
-            i++;
+        else if(strcmp(args[i], ")") == 0){
+            nest_level--;
         }
-        else if (strcmp(args[i], ">") == 0)
-        {
-            if (args[i + 1] == NULL)
+
+        if(nest_level == 0){
+            if (strcmp(args[i], "<") == 0)
             {
-                fprintf(stderr, "Syntax Error: No Output File For Trucating Provided\n");
-                return 1;
+                if (args[i + 1] == NULL)
+                {
+                    fprintf(stderr, "Syntax Error: No Input File Provided\n");
+                    return 1;
+                }
+                *infile = args[i + 1];
+                args[i] = NULL;
+                i++;
             }
-            *outfile = args[i + 1];
-            args[i] = NULL;
-            *append = 0;
-            i++;
+            else if (strcmp(args[i], ">>") == 0)
+            {
+                if (args[i + 1] == NULL)
+                {
+                    fprintf(stderr, "Syntax Error: No Output File For Appending Provided\n");
+                    return 1;
+                }
+                *outfile = args[i + 1];
+                args[i] = NULL;
+                *append = 1;
+                i++;
+            }
+            else if (strcmp(args[i], ">") == 0)
+            {
+                if (args[i + 1] == NULL)
+                {
+                    fprintf(stderr, "Syntax Error: No Output File For Trucating Provided\n");
+                    return 1;
+                }
+                *outfile = args[i + 1];
+                args[i] = NULL;
+                *append = 0;
+                i++;
+            }
         }
+
     }
     return 0;
 }
@@ -398,25 +517,27 @@ void launch_program_with_redirection(char *args[], int argsc, char **outfile, ch
     {
         if (*infile != NULL && *outfile != NULL)
         {
-            child_with_IaO_redirection(args, argsc, *outfile, *infile, *append);
+            child_with_IaO_redirection(args, argsc, *outfile, *infile, *append, &pid);
         }
         else if (*infile != NULL && *outfile == NULL)
         {
-            child_with_input_redirection(args, argsc, *infile);
+            child_with_input_redirection(args, argsc, *infile, &pid);
         }
         else
         {
-            child_with_output_redirection(args, argsc, *outfile, *append);
+            child_with_output_redirection(args, argsc, *outfile, *append, &pid);
         }
     }
 }
 
-void child_with_output_redirection(char *args[], int argsc, char *outfile, int append)
+void child_with_output_redirection(char *args[], int argsc, char *outfile, int append, pid_t *pid)
 {
     // TODO
     // change the file descritors using dup2() as given by outfile
     int flags = O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC);
     int fd = open(outfile, flags, 0644);
+    int status;
+    bool as_child = true;
     if (fd < 0)
     {
         perror("Error when opening output\n");
@@ -424,14 +545,23 @@ void child_with_output_redirection(char *args[], int argsc, char *outfile, int a
     }
     Dup2(fd, STDOUT_FILENO);
     close(fd);
-    Execvp(args[0], args);
+    status = subshell(NULL, args, 1);
+    if(status == 0){
+        Execvp(args[0], args);
+
+    }else if(status == 1){
+        clean_subshell_command(NULL, args, 1);
+        run_subshell(args, &as_child, pid);
+    }
 }
 
-void child_with_input_redirection(char *args[], int argsc, char *infile)
+void child_with_input_redirection(char *args[], int argsc, char *infile, pid_t *pid)
 {
     // TODO
     // change the file descritors using dup2() as given by infile
     int fd = open(infile, O_RDONLY);
+    int status;
+    bool as_child = true;
     if (fd < 0)
     {
         perror("Error when opening input\n");
@@ -439,16 +569,25 @@ void child_with_input_redirection(char *args[], int argsc, char *infile)
     }
     Dup2(fd, STDIN_FILENO);
     close(fd);
-    Execvp(args[0], args);
+    status = subshell(NULL, args, 1);
+    if(status == 0){
+        Execvp(args[0], args);
+
+    }else if(status == 1){
+        clean_subshell_command(NULL, args, 1);
+        run_subshell(args, &as_child, pid);
+    }
 }
 
-void child_with_IaO_redirection(char *args[], int argsc, char *outfile, char *infile, int append)
+void child_with_IaO_redirection(char *args[], int argsc, char *outfile, char *infile, int append, pid_t *pid)
 {
     // TODO
     // change the file descritors using dup2() as given by outfile AND infile
     int flags = O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC);
     int fd_out = open(outfile, flags, 0644);
     int fd_in = open(infile, O_RDONLY);
+    int status;
+    bool as_child = true;
     if (fd_out < 0 || fd_in < 0)
     {
         perror("Error when opening output/input\n");
@@ -458,7 +597,14 @@ void child_with_IaO_redirection(char *args[], int argsc, char *outfile, char *in
     Dup2(fd_in, STDIN_FILENO);
     close(fd_out);
     close(fd_in);
-    Execvp(args[0], args);
+    status = subshell(NULL, args, 1);
+    if(status == 0){
+        Execvp(args[0], args);
+
+    }else if(status == 1){
+        clean_subshell_command(NULL, args, 1);
+        run_subshell(args, &as_child, pid);
+    }
 }
 
 void run_cd(char *args[], int argsc, char lwd[])
@@ -503,7 +649,7 @@ void create_pipes(int pipes[][2], char *args[], int *argsc, int *idx, int *idx_c
 }
 
 // Decides on either redirection or no redirection launch calls for each pipeline stage
-void launch_pipelined_program(int pipes[][2], int i, int idx_count, char *args[], int argsc)
+void launch_pipelined_program(int pipes[][2], int i, int idx_count, char *args[], int argsc, int is_subshell)
 {
     char *outfile = NULL;
     char *infile = NULL;
@@ -539,7 +685,11 @@ void launch_pipelined_program(int pipes[][2], int i, int idx_count, char *args[]
             close(pipes[k][1]);
         }
 
-        if (command_with_redirection(NULL, args, 1))
+        if(is_subshell){
+            bool as_child = true;
+            run_subshell(args, &as_child, &pid);
+        }
+        else if (command_with_redirection(NULL, args, 1))
         {
             parse_command_with_redirection(NULL, args, &slice_argsc, &outfile, &infile, &append, 0);
             launch_program_with_redirection(args, argsc, &outfile, &infile, &append, &from_pipeline, &pid);
@@ -557,6 +707,7 @@ void run_pipeline(char *args[], int *argsc, int *idx, int *idx_count)
     // pipes is initialized to half*2 the max number of args (if you have 128 args and every second is a pipe then you would have max 64 pipes * 2 = 128)
     int pipes[(*idx_count) - 1][2];
     int slice_count;
+    int is_subshell;
     create_pipes(pipes, args, argsc, idx, idx_count);
     /*for (int i = 0; pipes[i] != -1; i++)
     {
@@ -578,11 +729,124 @@ void run_pipeline(char *args[], int *argsc, int *idx, int *idx_count)
         // then do the pipeline input output connections before execvp.
         // how would I then overwrite pipeline output and input redirection?
         slice[slice_count] = NULL;
-        launch_pipelined_program(pipes, i, (*idx_count), slice, slice_count);
+        is_subshell = subshell(NULL, slice, 1);
+        if(is_subshell){
+            clean_subshell_command(NULL, slice, 1);
+            launch_pipelined_program(pipes, i, (*idx_count), slice, slice_count, is_subshell);
+        }else{
+            launch_pipelined_program(pipes, i, (*idx_count), slice, slice_count, is_subshell);
+        }
+        
     }
     for (int i = 0; i < (*idx_count) - 1; i++)
     {
         close(pipes[i][0]);
         close(pipes[i][1]);
+    }
+}
+
+void run_subshell(char *args[], bool *as_child, pid_t *as_child_pid){
+    pid_t pid;
+    if(!(*as_child)){
+        pid = Fork();
+    }
+    else{
+        pid = (*as_child_pid);
+    }
+    if(pid == 0){
+        int argc = 0;
+        while(args[argc] != NULL) argc++;
+        
+        char *new_args[argc + 3];
+        new_args[0] = "./s3";
+        new_args[1] = "-c";
+
+    
+        for(int i = 0; i < argc; i++){
+            new_args[i+2] = args[i];
+        }
+        new_args[argc + 2] = NULL;
+
+        Execvp("./s3", new_args);
+    }
+
+}
+
+void run_command(char *command, int argc, char *lwd){
+
+    /// Storage for Pipeline operations
+    int idx[MAX_ARGS];
+    idx[0] = 0;
+    int idx_count;
+    bool sel = false;
+    // calling from main, not from the launch_pipeline function
+    bool from_pipeline = false;
+
+    /// Stores pointers to command arguments.
+    /// The first element of the array is the command name.
+    char *args[MAX_ARGS];
+
+    /// Stores the number of arguments
+    int argsc;
+
+    /// status is referenced to check whether parsed command is valid or not
+    int status;
+
+    /// Stores Input and Output file states for IO redirection
+    char *outfile = NULL;
+    char *infile = NULL;
+    int append = 0;
+
+    int is_subshell;
+    is_subshell = subshell(command, NULL, 0);
+    if (command_with_pipes(command, is_subshell))
+    {
+        sel = true;
+        idx_count = 1;
+        status = parse_command(command, args, &argsc, idx, &idx_count, &sel);
+        if (!status)
+        {
+            run_pipeline(args, &argc, idx, &idx_count);
+            reap_all();
+        }
+    }
+    else if (command_with_redirection(command, NULL, 0))
+    { /// Command with redirection
+        status = parse_command_with_redirection(command, args, &argsc, &outfile, &infile, &append, 1);
+        if (!status)
+        {
+            // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
+            // and not inside launch_pipeline
+            launch_program_with_redirection(args, argsc, &outfile, &infile, &append, &from_pipeline, NULL);
+            reap();
+        }
+    }
+    else if((is_subshell == 1) || (is_subshell == -1)){
+        if(is_subshell == 1){
+            bool as_child = false;
+            char temp_cmd[MAX_LINE];
+            strcpy(temp_cmd, command);
+            clean_subshell_command(temp_cmd, NULL, 0);
+            if(parse_command(temp_cmd, args, &argsc, NULL, NULL, NULL) == 0){
+                run_subshell(args, &as_child, NULL);
+                reap();
+            }
+        }
+    }
+    else if (is_cd(command))
+    { /// Command cd
+        parse_command(command, args, &argsc, NULL, NULL, NULL);
+        run_cd(args, argsc, lwd);
+        reap();
+    }
+    else /// Basic command
+    {
+        if (parse_command(command, args, &argsc, NULL, NULL, NULL) == 0)
+        {
+            // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function
+            // and not inside launch_pipeline
+            launch_program(args, argsc, &from_pipeline, NULL);
+            reap();
+        }
     }
 }
