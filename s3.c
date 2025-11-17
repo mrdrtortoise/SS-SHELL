@@ -775,10 +775,14 @@ void run_subshell(char *args[], bool *as_child, pid_t *as_child_pid){
         char *new_args[argc + 3];
         new_args[0] = "./s3c";
         new_args[1] = "-c";
+        fprintf(stderr, "new_args[0]: %s\n", new_args[0]);
+        fprintf(stderr, "new_args[1]: %s\n", new_args[1]);
 
     
         for(int i = 0; i < argc; i++){
             new_args[i+2] = args[i];
+            fprintf(stderr, "new_args[%d]: %s\n", i+2,  new_args[i+2]);
+
         }
         new_args[argc + 2] = NULL;
 

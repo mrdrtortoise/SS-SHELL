@@ -11,7 +11,7 @@ Features that are not part of extra work:
 
 Features that are extra work:
 1. Commands with Redirection (can have as many redirections as possible as long as the input does not exceed MAX_LINE)
-2. Subshells
+2. Subshells (with nesting)
 
 Notes: 
 
@@ -33,3 +33,6 @@ when using batched commands, each command must also have a space before and afte
 
 when using subshells, each subshell must be enclosed in parentheses, and the parentheses (being an operator) must also have a space before and after they are used. 
 (e.g. echo "start" ; ( cd foodir ; cat foo.txt | wc ) ; echo "end")
+
+when nesting, subshells, the same space separation must be respected.
+e.g. ->( ( cd txt ; cat calendar.txt ) | grep June ) | wc > myfile2.txt
