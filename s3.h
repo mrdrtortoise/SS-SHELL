@@ -7,10 +7,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <linux/limits.h>
+#include <limits.h>
 #include <stdbool.h>
 
 /// Constants for array sizes, defined for clarity and code readability
@@ -91,4 +92,7 @@ void run_cd(char *args[], int argsc, char lwd[]);
 int subshell(char *line, char *args[], int sel);
 void clean_subshell_command(char *line, char *args[], int sel);
 void run_subshell(char *args[], bool *as_child, pid_t *as_child_pid);
+
+// debug
+void printline(char *line);
 #endif

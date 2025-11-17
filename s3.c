@@ -1,5 +1,12 @@
 #include "s3.h"
 
+void printline(char *line){
+    for(int i = 0; line[i] != '\0'; i++){
+        fprintf(stderr, "[DEBUG] line[%d]: %c\n", i, line[i]);
+    }
+}
+
+
 void init_s3()
 {
     printf("\n\n  █████████   ████████      █████████  █████   █████ ██████████ █████       █████      \n"
@@ -107,13 +114,17 @@ void read_command_line(char line[], char lwd[])
     line[strlen(line) - 1] = '\0';
 }
 
-void get_next_command(char *line, char *command, int *curr_idx)
+void get_next_command(char *line, char *command_const, int *curr_idx)
 {
     int nest_level = 0;
     int i;
+    char command[MAX_LINE];
+    memset(command, 0, sizeof(command));
+    memset(command_const, 0, MAX_LINE);
+
     if (*curr_idx == 0)
     {
-        i = (*curr_idx);
+        i = 0;
     }
     else
     {
@@ -131,10 +142,13 @@ void get_next_command(char *line, char *command, int *curr_idx)
         }
         command[j++] = line[i++];
     }
-    if(command[j-1] == ' '){
-        command[j-1] = '\0';
-    }else{
-        command[j] = '\0';
+
+    while (j > 0 && isspace((unsigned char)command[j-1])) {
+        j--;
+    }
+    command[j] = '\0';
+    
+    for(int i = 0; command[i] != '\0'; i++){
     }
 
     if (line[i] == ';')
@@ -142,6 +156,7 @@ void get_next_command(char *line, char *command, int *curr_idx)
         i++;
     }
     *curr_idx = i;
+    strcpy(command_const, command);
 }
 /// Check Whether or not the Command has Input/Output Redirection.
 /// Returns 1 if there is Redirection and 0 if none.
@@ -758,7 +773,7 @@ void run_subshell(char *args[], bool *as_child, pid_t *as_child_pid){
         while(args[argc] != NULL) argc++;
         
         char *new_args[argc + 3];
-        new_args[0] = "./s3";
+        new_args[0] = "./s3c";
         new_args[1] = "-c";
 
     
@@ -767,7 +782,7 @@ void run_subshell(char *args[], bool *as_child, pid_t *as_child_pid){
         }
         new_args[argc + 2] = NULL;
 
-        Execvp("./s3", new_args);
+        Execvp("./s3c", new_args);
     }
 
 }
@@ -803,7 +818,9 @@ void run_command(char *command, int argc, char *lwd){
     {
         sel = true;
         idx_count = 1;
-        status = parse_command(command, args, &argsc, idx, &idx_count, &sel);
+        char temp_cmd[MAX_LINE];
+        strcpy(temp_cmd, command);
+        status = parse_command(temp_cmd, args, &argsc, idx, &idx_count, &sel);
         if (!status)
         {
             run_pipeline(args, &argc, idx, &idx_count);
@@ -812,7 +829,9 @@ void run_command(char *command, int argc, char *lwd){
     }
     else if (command_with_redirection(command, NULL, 0))
     { /// Command with redirection
-        status = parse_command_with_redirection(command, args, &argsc, &outfile, &infile, &append, 1);
+        char temp_cmd[MAX_LINE];
+        strcpy(temp_cmd, command);
+        status = parse_command_with_redirection(temp_cmd, args, &argsc, &outfile, &infile, &append, 1);
         if (!status)
         {
             // pass NULL as pid_pipeline because we are running it from main. Fork will happen inside this function

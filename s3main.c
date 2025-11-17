@@ -34,10 +34,10 @@ int main(int argc, char *argv[])
 
     while (1)
     {
+        curr_idx = 0;
         if(!is_subshell){
             read_command_line(line, lwd); /// Notice the additional parameter (required for prompt construction)
         }
-
         batch_count = batched_command(line) + 1;
         if (batch_count > 1)
         {
