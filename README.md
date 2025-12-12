@@ -1,4 +1,4 @@
-# This is the README file for the s3 implementation of Jad Saad and Maximilian Heuberger
+# This is the README file for the s3 implementation of Maximilian Heuberger and Jad Saad
 
 This shell has the following features:
 
